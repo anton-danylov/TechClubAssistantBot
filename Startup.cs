@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Generic;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.Bot.Builder.Ai.LUIS;
 using Microsoft.Bot.Builder.BotFramework;
 using Microsoft.Bot.Builder.Core.Extensions;
 using Microsoft.Bot.Builder.Integration.AspNet.Core;
@@ -40,8 +42,21 @@ namespace TechClubAssistantBot
 
                 IStorage dataStore = new MemoryStorage();
 
-                options.Middleware.Add(new ConversationState<TechClubAssistantBotState>(dataStore));
+                options.Middleware.Add(new ConversationState<Dictionary<string, object>>(dataStore));
+                options.Middleware.Add(new UserState<TechClubAssistantBotState>(dataStore));
+
+                var (modelId, subscriptionKey, url) = GetLuisConfiguration(Configuration);
+                var model = new LuisModel(modelId, subscriptionKey, url);
+                options.Middleware.Add(new LuisRecognizerMiddleware(model));
             });
+        }
+
+        private (string modelId, string subscriptionKey, Uri url) GetLuisConfiguration(IConfiguration configuration)
+        {
+            var modelId = configuration.GetSection("Luis-ModelId")?.Value;
+            var subscriptionKey = configuration.GetSection("Luis-SubscriptionId")?.Value;
+            var url = configuration.GetSection("Luis-Url")?.Value;
+            return (modelId, subscriptionKey, new Uri(url));
         }
 
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
