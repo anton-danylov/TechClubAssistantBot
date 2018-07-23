@@ -16,34 +16,46 @@ namespace TechClubAssistantBot
 {
     public class TechClubAssistantBot : IBot
     {
-        private const double LUIS_INTENT_THRESHOLD = 0.2d;
+        private const double LuisIntentTreshold = 0.2d;
+
+        private const string MeetingRoomPrompt = "MeetingRoomPrompt";
+        private const string TimePrompt = "TimePrompt";
+        private const string DurationPrompt = "DurationPrompt";
+        private const string ConfirmPrompt = "ConfirmPrompt";
+        private const string GreetingMessage = "#### Welcome to Meeting Room Booking Bot\n\nI can help you **book** of **list** available MR";
+        private const string DefaultIntent = "None";
+        private const string GreetingIntent = "Greeting";
+        private const string BookingIntent = "BookMeetingRoom";
 
         private readonly string[] _meetingRooms = { "krzyki", "country", "fabryczna", "jazz", "psie pole", "rock", "soul", "values" };
 
-        private readonly DialogSet dialogs;
+        private readonly DialogSet _dialogs;
+
+        private IEnumerable<string> MeetingRooms => _meetingRooms;
 
         public TechClubAssistantBot()
         {
-            dialogs = new DialogSet();
-            dialogs.Add("None", new WaterfallStep[] { DefaultDialog });
-            dialogs.Add("Greeting", new WaterfallStep[] { GreetingDialog });
-            dialogs.Add("BookMeetingRoom", new WaterfallStep[] 
+            _dialogs = new DialogSet();
+            _dialogs.Add(DefaultIntent, new WaterfallStep[] { DefaultDialog });
+            _dialogs.Add(GreetingIntent, new WaterfallStep[] { GreetingDialog });
+            _dialogs.Add(BookingIntent, new WaterfallStep[] 
             {
                 BookingRoomStart, BookingRoomTime, BookingRoomDuration, BookingRoomConfirmation, BookingRoomFinish
             });
 
-            dialogs.Add("MeetingRoomPrompt", new ChoicePrompt(Culture.English));
-            dialogs.Add("TimePrompt", new TextPrompt(TimeValidator));
-            dialogs.Add("DurationPrompt", new TextPrompt(DurationValidator));
-            dialogs.Add("ConfirmPrompt", new ChoicePrompt(Culture.English));
+            _dialogs.Add(MeetingRoomPrompt, new ChoicePrompt(Culture.English));
+            _dialogs.Add(TimePrompt, new DateTimePrompt(Culture.English, DateTimeValidator));
+            _dialogs.Add(DurationPrompt, new TextPrompt(DurationValidator));
+            _dialogs.Add(ConfirmPrompt, new ChoicePrompt(Culture.English));
 
 
-            dialogs.Add("GetAvailableRoomsForSpecificTime", new WaterfallStep[] { GetAvailableRoomsStart });
+            _dialogs.Add("GetAvailableRoomsForSpecificTime", new WaterfallStep[] { GetAvailableRoomsStart });
         }
 
-        private async Task TimeValidator(ITurnContext context, Microsoft.Bot.Builder.Prompts.TextResult result)
+
+        private async Task DateTimeValidator(ITurnContext context, Microsoft.Bot.Builder.Prompts.DateTimeResult result)
         {
-            if (string.IsNullOrWhiteSpace(result.Value))
+            if (string.IsNullOrWhiteSpace(result.Text))
             {
                 result.Status = Microsoft.Bot.Builder.Prompts.PromptStatus.NotRecognized;
                 await context.SendActivity("Please enter correct time");
@@ -66,12 +78,12 @@ namespace TechClubAssistantBot
 
             dialogContext.ActiveDialog.State = state;
 
-            await dialogContext.Context.SendActivity($"Booking meeting room...");
+            await dialogContext.Context.SendActivity($"Booking meeting room started");
 
             if (String.IsNullOrEmpty(state.MeetingRoom))
             {
-                var choices = _meetingRooms.Select(r => new Choice() { Value = r }).ToList();
-                await dialogContext.Prompt("MeetingRoomPrompt", "Select meeting room: ", new ChoicePromptOptions() { Choices = choices });
+                var choices = MeetingRooms.Select(r => new Choice() { Value = r }).ToList();
+                await dialogContext.Prompt(MeetingRoomPrompt, "Select meeting room: ", new ChoicePromptOptions() { Choices = choices });
             }
             else
             {
@@ -92,7 +104,7 @@ namespace TechClubAssistantBot
 
             if (String.IsNullOrEmpty(state.Time))
             {
-                await dialogContext.Prompt("TimePrompt", "Enter date and time: ");
+                await dialogContext.Prompt(TimePrompt, "Enter date and time: ", new PromptOptions() { RetryPromptString = "Please enter correct date and time" });
             }
             else
             {
@@ -105,14 +117,14 @@ namespace TechClubAssistantBot
             var state = new TechClubAssistantBotState(dialogContext.ActiveDialog.State);
             dialogContext.ActiveDialog.State = state;
 
-            if (args is Microsoft.Bot.Builder.Prompts.TextResult textResult)
+            if (args is Microsoft.Bot.Builder.Prompts.DateTimeResult result)
             {
-                state.Time = textResult.Value;
+                state.Time = result.Text;
             }
 
             if (String.IsNullOrEmpty(state.Duration))
             {
-                await dialogContext.Prompt("DurationPrompt", "Enter duration: ");
+                await dialogContext.Prompt(DurationPrompt, "Enter duration: ", new PromptOptions() { RetryPromptString = "Please enter correct duration" });
             }
             else
             {
@@ -126,13 +138,15 @@ namespace TechClubAssistantBot
             dialogContext.ActiveDialog.State = state;
 
 
-            if (args is Microsoft.Bot.Builder.Prompts.TextResult textResult)
+            if (args is Microsoft.Bot.Builder.Prompts.TextResult result)
             {
-                state.Duration = textResult.Value;
+                state.Duration = result.Value;
             }
 
+            string summary = $"Please confirm your booking: **{state.MeetingRoom}** at {state.Time} for {state.Duration}";
+
             var choices = new List<Choice> { new Choice() { Value = "Confirm" }, new Choice() { Value = "Reject" } };
-            await dialogContext.Prompt("ConfirmPrompt", "Please confirm your booking", new ChoicePromptOptions() { Choices = choices });
+            await dialogContext.Prompt(ConfirmPrompt, summary, new ChoicePromptOptions() { Choices = choices });
         }
 
         private async Task BookingRoomFinish(DialogContext dialogContext, object args, SkipStepFunction next)
@@ -146,7 +160,7 @@ namespace TechClubAssistantBot
 
             if (state.IsConfirmed)
             {
-                await dialogContext.Context.SendActivity($"Your booking '{state.MeetingRoom}' was processed.");
+                await dialogContext.Context.SendActivity($"Your booking was processed.");
                 //Process booking
             }
             else
@@ -166,54 +180,27 @@ namespace TechClubAssistantBot
 
         private Task GreetingDialog(DialogContext dialogContext, object args, SkipStepFunction next)
         {
-            return dialogContext.Context.SendActivity("#### Welcome to Meeting Room Booking Bot\n\nI can help you **book** of **list** available MR");
+            return dialogContext.Context.SendActivity(GreetingMessage);
         }
-
-
-        private static void FillBookingStateFromLuisResult(TechClubAssistantBotState state, LuisResult result)
-        {
-            EntityRecommendation meetingRoomEntity = result.Entities.Where(e => e.Type == "Meeting Room").FirstOrDefault();
-            state.MeetingRoom = ((meetingRoomEntity?.Resolution?["values"]) as List<object>)?.FirstOrDefault()?.ToString();
-
-            EntityRecommendation durationEntity = result.Entities.Where(e => e.Type == "builtin.datetimeV2.duration").FirstOrDefault();
-            state.Duration = (((durationEntity?.Resolution?["values"]) as List<object>)?.FirstOrDefault() as Dictionary<string, object>)?["value"]?.ToString();
-
-            EntityRecommendation timeEntity = result.Entities.Where(e => e.Type == "builtin.datetimeV2.datetime").FirstOrDefault();
-            state.Time = (((timeEntity?.Resolution?["values"]) as List<object>)?.FirstOrDefault() as Dictionary<string, object>)?["value"]?.ToString();
-        }
-
 
 
 
         private Task GetAvailableRoomsStart(DialogContext dialogContext, object args, SkipStepFunction next)
         {
-            return dialogContext.Context.SendActivity("Getting available rooms...");
+            var meetingRoomsListing = String.Join("\n\n", MeetingRooms);
+            return dialogContext.Context.SendActivity($"Available rooms: \n\n{meetingRoomsListing}");
         }
 
         public async Task OnTurn(ITurnContext context)
         {
             if (context.Activity.Type == ActivityTypes.ConversationUpdate && context.Activity.MembersAdded.FirstOrDefault()?.Id == context.Activity.Recipient.Id)
             {
-                await context.SendActivity("#### Welcome to Meeting Room Booking Bot\n\nI can help you **book** of **list** available MR");
+                await context.SendActivity(GreetingMessage);
             }
             else if (context.Activity.Type == ActivityTypes.Message)
             {
                 var state = context.GetConversationState<Dictionary<string, object>>();
-                var dialogContext = dialogs.CreateContext(context, state);
-
-                var utterance = context.Activity.Text.ToLowerInvariant();
-                if (utterance == "cancel")
-                {
-                    if (dialogContext.ActiveDialog != null)
-                    {
-                        await context.SendActivity("Ok... Cancelled");
-                        dialogContext.EndAll();
-                    }
-                    else
-                    {
-                        await context.SendActivity("Nothing to cancel.");
-                    }
-                }
+                var dialogContext = _dialogs.CreateContext(context, state);
 
                 if (!context.Responded)
                 {
@@ -223,12 +210,26 @@ namespace TechClubAssistantBot
                     {
                         var luisResult = context.Services.Get<RecognizerResult>(LuisRecognizerMiddleware.LuisRecognizerResultKey);
                         var (intent, score) = luisResult.GetTopScoringIntent();
-                        var intentResult = score > LUIS_INTENT_THRESHOLD ? intent : "None";                       
+                        var intentResult = score > LuisIntentTreshold ? intent : DefaultIntent;                       
 
                         await dialogContext.Begin(intent, luisResult.Properties);
                     }
                 }
             }
+        }
+
+
+        private static void FillBookingStateFromLuisResult(TechClubAssistantBotState state, LuisResult result)
+        {
+            EntityRecommendation meetingRoomEntity = result.Entities.Where(e => e.Type == "Meeting Room").FirstOrDefault();
+            state.MeetingRoom = ((meetingRoomEntity?.Resolution?["values"]) as List<object>)?.FirstOrDefault()?.ToString();
+
+            EntityRecommendation durationEntity = result.Entities.Where(e => e.Type == "builtin.datetimeV2.duration").FirstOrDefault();
+            var resolvedDuration = (((durationEntity?.Resolution?["values"]) as List<object>)?.FirstOrDefault() as Dictionary<string, object>)?["value"];
+            state.Duration = resolvedDuration != null ? TimeSpan.FromSeconds(Convert.ToDouble(resolvedDuration)).ToString() : null;
+
+            EntityRecommendation timeEntity = result.Entities.Where(e => e.Type == "builtin.datetimeV2.datetime").FirstOrDefault();
+            state.Time = (((timeEntity?.Resolution?["values"]) as List<object>)?.FirstOrDefault() as Dictionary<string, object>)?["value"]?.ToString();
         }
     }
 }
