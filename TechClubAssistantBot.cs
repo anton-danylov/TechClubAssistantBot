@@ -28,13 +28,15 @@ namespace TechClubAssistantBot
         private const string BookingIntent = "BookMeetingRoom";
 
         private readonly string[] _meetingRooms = { "krzyki", "country", "fabryczna", "jazz", "psie pole", "rock", "soul", "values" };
-
+        private readonly IMeetingRoomBookingService _meetingRoomBookingService;
         private readonly DialogSet _dialogs;
 
         private IEnumerable<string> MeetingRooms => _meetingRooms;
 
-        public TechClubAssistantBot()
+        public TechClubAssistantBot(IMeetingRoomBookingService meetingRoomBookingService)
         {
+            _meetingRoomBookingService = meetingRoomBookingService;
+
             _dialogs = new DialogSet();
             _dialogs.Add(DefaultIntent, new WaterfallStep[] { DefaultDialog });
             _dialogs.Add(GreetingIntent, new WaterfallStep[] { GreetingDialog });
@@ -160,8 +162,9 @@ namespace TechClubAssistantBot
 
             if (state.IsConfirmed)
             {
+                var bookingResult = await _meetingRoomBookingService.BookMeetingRoomAsync(new BookingRequest() { MeetingRoom = state.MeetingRoom, Time = state.Time, Duration = state.Duration });
+
                 await dialogContext.Context.SendActivity($"Your booking was processed.");
-                //Process booking
             }
             else
             {

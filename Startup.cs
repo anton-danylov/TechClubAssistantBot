@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Bot.Builder.Ai.LUIS;
@@ -27,9 +28,12 @@ namespace TechClubAssistantBot
 
         public IConfiguration Configuration { get; }
 
-        // This method gets called by the runtime. Use this method to add services to the container.
+
+
         public void ConfigureServices(IServiceCollection services)
         {
+            services.AddTransient<IMeetingRoomBookingService, MeetingRoomBookingService>();
+
             services.AddBot<TechClubAssistantBot>(options =>
             {
                 options.CredentialProvider = new ConfigurationCredentialProvider(Configuration);
